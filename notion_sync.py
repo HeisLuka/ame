@@ -87,6 +87,13 @@ def prop_value(prop: dict[str, Any] | None) -> Any:
         return [item.get("name") for item in (value or [])]
     if kind == "relation":
         return [item.get("id") for item in (value or []) if item.get("id")]
+    if kind in {"unique_id", "auto_increment_id"}:
+        ident = value or {}
+        number = ident.get("number")
+        prefix = ident.get("prefix")
+        if number is None:
+            return None
+        return f"{prefix}-{number}" if prefix else str(number)
     if kind == "formula":
         formula = value or {}
         ftype = formula.get("type")
@@ -192,6 +199,13 @@ def sync_source(
         cursor = response.get("next_cursor")
         if not cursor:
             raise RuntimeError("Notion returned has_more without next_cursor")
+
+    if full:
+        entity_type = source["entity_type"]
+        store.conn.execute("DELETE FROM relations WHERE src_type=? OR dst_type=?", (entity_type, entity_type))
+        store.conn.execute("DELETE FROM entities_fts WHERE entity_type=?", (entity_type,))
+        store.conn.execute("DELETE FROM entities WHERE entity_type=?", (entity_type,))
+        store.conn.commit()
 
     # Pass 1: identities and primitive metadata.
     for page in pages:
